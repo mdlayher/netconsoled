@@ -40,7 +40,8 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	sigC := make(chan os.Signal, 1)
-	signal.Notify(sigC, os.Interrupt, os.Kill)
+	// TODO(mdlayher): portable version of syscall.SIGTERM if possible.
+	signal.Notify(sigC, os.Interrupt)
 
 	var wg sync.WaitGroup
 	wg.Add(1)
