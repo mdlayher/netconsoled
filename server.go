@@ -8,6 +8,12 @@ import (
 	"github.com/mdlayher/netconsole"
 )
 
+// Data carries a netconsole log and its metadata.
+type Data struct {
+	Addr net.Addr
+	Log  netconsole.Log
+}
+
 // A Server serves the netconsoled UDP and HTTP servers.
 type Server struct {
 	// Filter determines which received logs are allowed to be processed.
@@ -21,14 +27,20 @@ type Server struct {
 }
 
 // Handle handles incoming netconsole log messages.
-func (s *Server) Handle(addr net.Addr, l *netconsole.Log) {
+func (s *Server) Handle(addr net.Addr, l netconsole.Log) {
+	// Package up information for easier parameter passing.
+	d := Data{
+		Addr: addr,
+		Log:  l,
+	}
+
 	// TODO(mdlayher): hooks/metrics in various areas.
 
-	if !s.Filter.Allow(addr, l) {
+	if !s.Filter.Allow(d) {
 		return
 	}
 
-	if err := s.Sink.Store(addr, l); err != nil {
+	if err := s.Sink.Store(d); err != nil {
 		s.ErrorLog.Printf("error sending log to sink: %v", err)
 		return
 	}

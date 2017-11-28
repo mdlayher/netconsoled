@@ -1,7 +1,6 @@
 package netconsoled_test
 
 import (
-	"net"
 	"testing"
 	"time"
 
@@ -10,16 +9,15 @@ import (
 	"github.com/mdlayher/netconsoled"
 )
 
-var panicFilter = netconsoled.FuncFilter(func(addr net.Addr, l *netconsole.Log) bool {
+var panicFilter = netconsoled.FuncFilter(func(d netconsoled.Data) bool {
 	panic("reached panic filter")
 })
 
 func TestFilter(t *testing.T) {
 	tests := []struct {
 		name   string
-		addr   net.Addr
-		l      *netconsole.Log
-		verify func(t *testing.T, addr net.Addr, l *netconsole.Log)
+		d      netconsoled.Data
+		verify func(t *testing.T, d netconsoled.Data)
 	}{
 		{
 			name:   "multi disallow",
@@ -27,9 +25,11 @@ func TestFilter(t *testing.T) {
 		},
 		{
 			name: "multi allow",
-			l: &netconsole.Log{
-				Elapsed: 1 * time.Second,
-				Message: "hello world",
+			d: netconsoled.Data{
+				Log: netconsole.Log{
+					Elapsed: 1 * time.Second,
+					Message: "hello world",
+				},
 			},
 			verify: testMultiFilterAllow,
 		},
@@ -37,15 +37,15 @@ func TestFilter(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tt.verify(t, tt.addr, tt.l)
+			tt.verify(t, tt.d)
 		})
 	}
 }
 
-func testMultiFilterDisallow(t *testing.T, addr net.Addr, l *netconsole.Log) {
+func testMultiFilterDisallow(t *testing.T, d netconsoled.Data) {
 	t.Helper()
 
-	disallowFilter := netconsoled.FuncFilter(func(addr net.Addr, l *netconsole.Log) bool {
+	disallowFilter := netconsoled.FuncFilter(func(d netconsoled.Data) bool {
 		return false
 	})
 
@@ -56,17 +56,17 @@ func testMultiFilterDisallow(t *testing.T, addr net.Addr, l *netconsole.Log) {
 		panicFilter,
 	)
 
-	if filter.Allow(addr, l) {
+	if filter.Allow(d) {
 		t.Fatal("expected filter to disallow log, but it was allowed")
 	}
 }
 
-func testMultiFilterAllow(t *testing.T, addr net.Addr, l *netconsole.Log) {
+func testMultiFilterAllow(t *testing.T, d netconsoled.Data) {
 	t.Helper()
 
-	var got []*netconsole.Log
-	fnFilter := netconsoled.FuncFilter(func(addr net.Addr, l *netconsole.Log) bool {
-		got = append(got, l)
+	var got []netconsoled.Data
+	fnFilter := netconsoled.FuncFilter(func(d netconsoled.Data) bool {
+		got = append(got, d)
 		return true
 	})
 
@@ -76,11 +76,11 @@ func testMultiFilterAllow(t *testing.T, addr net.Addr, l *netconsole.Log) {
 		fnFilter,
 	)
 
-	if !filter.Allow(addr, l) {
+	if !filter.Allow(d) {
 		t.Fatal("expected filter to allow log, but it was disallowed")
 	}
 
-	want := []*netconsole.Log{l, l}
+	want := []netconsoled.Data{d, d}
 
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Fatalf("unexpected logs (-want +got):\n%s", diff)

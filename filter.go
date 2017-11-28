@@ -2,16 +2,13 @@ package netconsoled
 
 import (
 	"fmt"
-	"net"
-
-	"github.com/mdlayher/netconsole"
 )
 
 // A Filter allows filtering of incoming logs based on the source network address
 // and contents of the logs.
 type Filter interface {
-	// Allow determines if a log should or should not be processed.
-	Allow(addr net.Addr, l *netconsole.Log) bool
+	// Allow determines if Data should or should not be processed.
+	Allow(d Data) bool
 
 	// String returns the name of a Filter.
 	fmt.Stringer
@@ -31,9 +28,9 @@ type multiFilter struct {
 	filters []Filter
 }
 
-func (f *multiFilter) Allow(addr net.Addr, l *netconsole.Log) bool {
+func (f *multiFilter) Allow(d Data) bool {
 	for _, filter := range f.filters {
-		if !filter.Allow(addr, l) {
+		if !filter.Allow(d) {
 			return false
 		}
 	}
@@ -47,7 +44,7 @@ func (f *multiFilter) String() string {
 }
 
 // FuncFilter adapts a function into a Filter.
-func FuncFilter(allow func(addr net.Addr, l *netconsole.Log) bool) Filter {
+func FuncFilter(allow func(d Data) bool) Filter {
 	return &funcFilter{
 		fn: allow,
 	}
@@ -56,11 +53,11 @@ func FuncFilter(allow func(addr net.Addr, l *netconsole.Log) bool) Filter {
 var _ Filter = &funcFilter{}
 
 type funcFilter struct {
-	fn func(_ net.Addr, _ *netconsole.Log) bool
+	fn func(d Data) bool
 }
 
-func (f *funcFilter) Allow(addr net.Addr, l *netconsole.Log) bool { return f.fn(addr, l) }
-func (f *funcFilter) String() string                              { return "func" }
+func (f *funcFilter) Allow(d Data) bool { return f.fn(d) }
+func (f *funcFilter) String() string    { return "func" }
 
 // NoopFilter returns a Filter that always allows any log.
 func NoopFilter() Filter {
@@ -71,5 +68,5 @@ var _ Filter = &noopFilter{}
 
 type noopFilter struct{}
 
-func (f *noopFilter) Allow(_ net.Addr, _ *netconsole.Log) bool { return true }
-func (f *noopFilter) String() string                           { return "noop" }
+func (f *noopFilter) Allow(_ Data) bool { return true }
+func (f *noopFilter) String() string    { return "noop" }

@@ -12,8 +12,8 @@ func TestServerHandle(t *testing.T) {
 	tests := []struct {
 		name   string
 		addr   net.Addr
-		l      *netconsole.Log
-		verify func(t *testing.T, addr net.Addr, l *netconsole.Log)
+		l      netconsole.Log
+		verify func(t *testing.T, addr net.Addr, l netconsole.Log)
 	}{
 		{
 			name:   "filter disallow",
@@ -32,11 +32,11 @@ func TestServerHandle(t *testing.T) {
 	}
 }
 
-func testServerFilterDisallow(t *testing.T, addr net.Addr, l *netconsole.Log) {
+func testServerFilterDisallow(t *testing.T, addr net.Addr, l netconsole.Log) {
 	t.Helper()
 
 	s := &netconsoled.Server{
-		Filter: netconsoled.FuncFilter(func(addr net.Addr, l *netconsole.Log) bool {
+		Filter: netconsoled.FuncFilter(func(d netconsoled.Data) bool {
 			return false
 		}),
 		Sink: panicSink,
@@ -45,7 +45,7 @@ func testServerFilterDisallow(t *testing.T, addr net.Addr, l *netconsole.Log) {
 	s.Handle(addr, l)
 }
 
-func testServerSinkOK(t *testing.T, addr net.Addr, l *netconsole.Log) {
+func testServerSinkOK(t *testing.T, addr net.Addr, l netconsole.Log) {
 	t.Helper()
 
 	s := &netconsoled.Server{

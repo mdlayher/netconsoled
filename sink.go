@@ -2,15 +2,12 @@ package netconsoled
 
 import (
 	"fmt"
-	"net"
-
-	"github.com/mdlayher/netconsole"
 )
 
 // A Sink enables storage of processed logs.
 type Sink interface {
 	// Store stores a log to the Sink.
-	Store(addr net.Addr, l *netconsole.Log) error
+	Store(d Data) error
 
 	// String returns the name of a Sink.
 	fmt.Stringer
@@ -30,9 +27,9 @@ type multiSink struct {
 	sinks []Sink
 }
 
-func (s *multiSink) Store(addr net.Addr, l *netconsole.Log) error {
+func (s *multiSink) Store(d Data) error {
 	for _, sink := range s.sinks {
-		if err := sink.Store(addr, l); err != nil {
+		if err := sink.Store(d); err != nil {
 			return err
 		}
 	}
@@ -46,7 +43,7 @@ func (s *multiSink) String() string {
 }
 
 // FuncSink adapts a function into a Sink.
-func FuncSink(store func(addr net.Addr, l *netconsole.Log) error) Sink {
+func FuncSink(store func(d Data) error) Sink {
 	return &funcSink{
 		fn: store,
 	}
@@ -55,11 +52,11 @@ func FuncSink(store func(addr net.Addr, l *netconsole.Log) error) Sink {
 var _ Sink = &funcSink{}
 
 type funcSink struct {
-	fn func(_ net.Addr, _ *netconsole.Log) error
+	fn func(d Data) error
 }
 
-func (f *funcSink) Store(addr net.Addr, l *netconsole.Log) error { return f.fn(addr, l) }
-func (f *funcSink) String() string                               { return "func" }
+func (f *funcSink) Store(d Data) error { return f.fn(d) }
+func (f *funcSink) String() string     { return "func" }
 
 // NoopSink returns a Sink that discards all logs.
 func NoopSink() Sink {
@@ -70,5 +67,5 @@ var _ Sink = &noopSink{}
 
 type noopSink struct{}
 
-func (s *noopSink) Store(_ net.Addr, _ *netconsole.Log) error { return nil }
-func (s *noopSink) String() string                            { return "noop" }
+func (s *noopSink) Store(_ Data) error { return nil }
+func (s *noopSink) String() string     { return "noop" }
