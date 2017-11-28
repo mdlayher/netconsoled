@@ -88,6 +88,8 @@ func parseSinks(c RawConfig) ([]netconsoled.Sink, error) {
 		switch s.Type {
 		case "noop":
 			sink = netconsoled.NoopSink()
+		case "stdout":
+			sink = netconsoled.StdoutSink()
 		default:
 			return nil, fmt.Errorf("unknown sink type in configuration: %q", s.Type)
 		}

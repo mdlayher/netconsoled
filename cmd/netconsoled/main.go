@@ -46,10 +46,12 @@ server:
   http_addr: :8080
 # Zero or more filters to apply to incoming logs.
 filters:
+  # By default, apply no filtering to logs.
   - type: noop
 # Zero or more sinks to use to store processed logs.
 sinks:
-  - type: noop
+  # By default, print logs to stdout.
+  - type: stdout
 `
 
 	if err := ioutil.WriteFile(file, []byte(defaultYAML), 0644); err != nil {

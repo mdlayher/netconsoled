@@ -4,9 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mdlayher/netconsoled"
-
 	"github.com/google/go-cmp/cmp"
+	"github.com/mdlayher/netconsoled"
 	"github.com/mdlayher/netconsoled/internal/config"
 )
 
@@ -165,7 +164,7 @@ filters:
   - type: noop
 sinks:
   - type: noop
-  - type: noop
+  - type: stdout
 			`)),
 			cfg: &config.Config{
 				Server: config.ServerConfig{
@@ -176,7 +175,7 @@ sinks:
 				},
 				Sinks: []netconsoled.Sink{
 					netconsoled.NoopSink(),
-					netconsoled.NoopSink(),
+					netconsoled.StdoutSink(),
 				},
 			},
 			ok: true,
@@ -200,9 +199,20 @@ sinks:
 				return
 			}
 
-			if diff := cmp.Diff(tt.cfg, cfg); diff != "" {
+			opts := []cmp.Option{
+				cmp.Comparer(filterComparer),
+				cmp.Comparer(sinkComparer),
+			}
+
+			if diff := cmp.Diff(tt.cfg, cfg, opts...); diff != "" {
 				t.Fatalf("unexpected config (-want +got):\n%s", diff)
 			}
 		})
 	}
 }
+
+// cmp.Comparer options used to override equality operations for our interface
+// types, so we can just compare them by their names and not their details.
+
+func filterComparer(x, y netconsoled.Filter) bool { return x.String() == y.String() }
+func sinkComparer(x, y netconsoled.Sink) bool     { return x.String() == y.String() }

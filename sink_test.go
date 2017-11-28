@@ -1,7 +1,10 @@
 package netconsoled_test
 
 import (
+	"bytes"
 	"errors"
+	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -24,7 +27,6 @@ func TestSink(t *testing.T) {
 			name:   "multi error",
 			verify: testMultiSinkError,
 		},
-
 		{
 			name: "multi ok",
 			d: netconsoled.Data{
@@ -34,6 +36,19 @@ func TestSink(t *testing.T) {
 				},
 			},
 			verify: testMultiSinkOK,
+		},
+		{
+			name: "writer ok",
+			d: netconsoled.Data{
+				Addr: &net.UDPAddr{
+					IP:   net.IPv4(192, 168, 1, 1),
+					Port: 6666,
+				},
+				Log: netconsole.Log{
+					Message: "hello world",
+				},
+			},
+			verify: testWriterSinkOK,
 		},
 	}
 
@@ -86,5 +101,30 @@ func testMultiSinkOK(t *testing.T, d netconsoled.Data) {
 
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Fatalf("unexpected logs (-want +got):\n%s", diff)
+	}
+}
+
+func testWriterSinkOK(t *testing.T, d netconsoled.Data) {
+	t.Helper()
+
+	buf := bytes.NewBuffer(nil)
+	sink := netconsoled.WriterSink(buf)
+
+	if err := sink.Store(d); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Just check if a couple of string fields ended up in the buffer.
+	ss := []string{
+		d.Addr.String(),
+		"0.0",
+		d.Log.Message,
+	}
+
+	str := buf.String()
+	for _, s := range ss {
+		if !strings.Contains(str, s) {
+			t.Fatalf("buffer did not contain %q: buf: %s", s, str)
+		}
 	}
 }
