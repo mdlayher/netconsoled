@@ -5,7 +5,7 @@ os:
   - linux
 sudo: required
 before_install:
-  - sudo apt install yamllint
+  - sudo pip install yamllint
   - go get github.com/golang/lint/golint
   - go get honnef.co/go/tools/cmd/staticcheck
   - go get -d ./...
