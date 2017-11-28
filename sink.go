@@ -10,6 +10,8 @@ import (
 const defaultFormat = "[% 15s] [% 15f] %s"
 
 // A Sink enables storage of processed logs.
+//
+// Sinks may optionally implement io.Closer to flush data before the server halts.
 type Sink interface {
 	// Store stores a log to the Sink.
 	Store(d Data) error
@@ -35,6 +37,22 @@ var _ Sink = &multiSink{}
 
 type multiSink struct {
 	sinks []Sink
+}
+
+func (s *multiSink) Close() error {
+	for _, sink := range s.sinks {
+		// Close all sinks which implement io.Closer.
+		c, ok := sink.(io.Closer)
+		if !ok {
+			continue
+		}
+
+		if err := c.Close(); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (s *multiSink) Store(d Data) error {
@@ -95,6 +113,16 @@ var _ Sink = &writerSink{}
 type writerSink struct {
 	w      io.Writer
 	format string
+}
+
+func (s *writerSink) Close() error {
+	// Close io.Writers which also implement io.Closer.
+	c, ok := s.w.(io.Closer)
+	if !ok {
+		return nil
+	}
+
+	return c.Close()
 }
 
 func (s *writerSink) Store(d Data) error {

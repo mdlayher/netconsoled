@@ -3,6 +3,7 @@ package netconsoled_test
 import (
 	"bytes"
 	"errors"
+	"io"
 	"net"
 	"strings"
 	"testing"
@@ -49,6 +50,10 @@ func TestSink(t *testing.T) {
 				},
 			},
 			verify: testWriterSinkOK,
+		},
+		{
+			name:   "multi closer ok",
+			verify: testMultiSinkCloserOK,
 		},
 	}
 
@@ -127,4 +132,52 @@ func testWriterSinkOK(t *testing.T, d netconsoled.Data) {
 			t.Fatalf("buffer did not contain %q: buf: %s", s, str)
 		}
 	}
+}
+
+func testMultiSinkCloserOK(t *testing.T, d netconsoled.Data) {
+	t.Helper()
+
+	// Attach a Close method to verify an arbitrary Sink is closed,
+	// though the underlying type doesn't have a Close method.
+	fnSink := &sinkCloser{
+		Sink: netconsoled.FuncSink(func(d netconsoled.Data) error {
+			return nil
+		}),
+	}
+
+	// Do not attach a Close method to a writer sink.
+	buf := bytes.NewBuffer(nil)
+	wSink := netconsoled.WriterSink(buf)
+
+	sink := netconsoled.MultiSink(
+		fnSink,
+		wSink,
+	)
+
+	if err := sink.Store(d); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	c, ok := sink.(io.Closer)
+	if !ok {
+		t.Fatal("multi sink is not an io.Closer")
+	}
+
+	if err := c.Close(); err != nil {
+		t.Fatalf("failed to close sink: %v", err)
+	}
+
+	if !fnSink.closed {
+		t.Fatal("function sink Close was not called")
+	}
+}
+
+type sinkCloser struct {
+	netconsoled.Sink
+	closed bool
+}
+
+func (s *sinkCloser) Close() error {
+	s.closed = true
+	return nil
 }
