@@ -1,0 +1,43 @@
+{
+	"comment": "",
+	"ignore": "test",
+	"package": [
+		{
+			"checksumSHA1": "bU8SKn50bgm6gQ2g43X5ZcMEtL8=",
+			"path": "github.com/google/go-cmp/cmp",
+			"revision": "3f298f31d5756f2fe00ddfbeda978125ad24862e",
+			"revisionTime": "2017-11-24T00:01:45Z"
+		},
+		{
+			"checksumSHA1": "oLBV7th4sxzxzmf1b91NVVbdOfI=",
+			"path": "github.com/google/go-cmp/cmp/internal/diff",
+			"revision": "3f298f31d5756f2fe00ddfbeda978125ad24862e",
+			"revisionTime": "2017-11-24T00:01:45Z"
+		},
+		{
+			"checksumSHA1": "kYtvRhMjM0X4bvEjR3pqEHLw1qo=",
+			"path": "github.com/google/go-cmp/cmp/internal/function",
+			"revision": "3f298f31d5756f2fe00ddfbeda978125ad24862e",
+			"revisionTime": "2017-11-24T00:01:45Z"
+		},
+		{
+			"checksumSHA1": "SqUdhXJw6RZCn8RZbfKIFSzCAzw=",
+			"path": "github.com/google/go-cmp/cmp/internal/value",
+			"revision": "3f298f31d5756f2fe00ddfbeda978125ad24862e",
+			"revisionTime": "2017-11-24T00:01:45Z"
+		},
+		{
+			"checksumSHA1": "XgeoFk41PHr+lf6nFmHdl1N/rbU=",
+			"path": "github.com/mdlayher/netconsole",
+			"revision": "a405c70e00ce05493f05fabb46aee3ec8367345d",
+			"revisionTime": "2017-11-27T23:27:02Z"
+		},
+		{
+			"checksumSHA1": "fRgp9UZPllOlkPssv7frzQx4z9A=",
+			"path": "gopkg.in/yaml.v2",
+			"revision": "287cf08546ab5e7e37d55a84f7ed3fd1db036de5",
+			"revisionTime": "2017-11-16T09:02:43Z"
+		}
+	],
+	"rootPath": "github.com/mdlayher/netconsoled"
+}

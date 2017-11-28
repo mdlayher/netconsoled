@@ -1,0 +1,20 @@
+language: go
+go:
+  - 1.x
+os:
+  - linux
+sudo: required
+before_install:
+  - sudo apt install yamllint
+  - go get github.com/golang/lint/golint
+  - go get honnef.co/go/tools/cmd/staticcheck
+  - go get -d ./...
+script:
+  - go build -tags=gofuzz ./...
+  - go vet ./...
+  - staticcheck ./...
+  - golint -set_exit_status . cmd/... internal/...
+  - go test -v -race ./...
+  - go install ./cmd/netconsoled/
+  - netconsoled -init
+  - yamllint netconsoled.yml
