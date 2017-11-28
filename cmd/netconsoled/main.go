@@ -5,10 +5,14 @@ package main
 import (
 	"context"
 	"flag"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"sync"
+	"time"
 
 	"github.com/mdlayher/netconsole"
 	"github.com/mdlayher/netconsoled"
@@ -31,7 +35,29 @@ func main() {
 		return
 	}
 
-	run(ll, *config)
+	// Notify goroutines of halt signal by canceling this context when a
+	// signal is received.
+	ctx, cancel := context.WithCancel(context.Background())
+
+	sigC := make(chan os.Signal, 1)
+	signal.Notify(sigC, os.Interrupt, os.Kill)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	go func() {
+		defer wg.Done()
+
+		sig := <-sigC
+		ll.Printf("caught signal %q, stopping", sig.String())
+		cancel()
+	}()
+
+	run(ctx, ll, *config)
+
+	wg.Wait()
+
+	ll.Println("stopped netconsoled")
 }
 
 func initConfig(ll *log.Logger, file string) {
@@ -59,7 +85,7 @@ sinks:
 	}
 }
 
-func run(ll *log.Logger, file string) {
+func run(ctx context.Context, ll *log.Logger, file string) {
 	ll.Printf("starting netconsoled with configuration file %q", file)
 
 	b, err := ioutil.ReadFile(file)
@@ -82,40 +108,78 @@ func run(ll *log.Logger, file string) {
 		ll.Printf("  - %s", s.String())
 	}
 
+	// Sink is split out so it can shut down gracefully later.
+	sink := netconsoled.MultiSink(cfg.Sinks...)
+
 	s := &netconsoled.Server{
 		Filter:   netconsoled.MultiFilter(cfg.Filters...),
-		Sink:     netconsoled.MultiSink(cfg.Sinks...),
+		Sink:     sink,
 		ErrorLog: ll,
 	}
 
 	// Start each network service in its own goroutine so they can
 	// be shut down at a later time.
+	var wg sync.WaitGroup
+	wg.Add(3)
 
+	// UDP server goroutine.
 	go func() {
+		defer wg.Done()
+
 		ns := netconsole.NewServer("udp", cfg.Server.UDPAddr, s.Handle)
 
 		ll.Printf("starting UDP server at %q", cfg.Server.UDPAddr)
 
-		if err := ns.ListenAndServe(context.Background()); err != nil {
+		// Canceled context will stop listener.
+		if err := ns.ListenAndServe(ctx); err != nil {
 			ll.Fatalf("failed to listen UDP: %v", err)
 		}
 	}()
 
+	hs := &http.Server{
+		Addr:     cfg.Server.HTTPAddr,
+		Handler:  s,
+		ErrorLog: ll,
+	}
+
+	// HTTP server listener goroutine.
 	go func() {
-		hs := &http.Server{
-			Addr:     cfg.Server.HTTPAddr,
-			Handler:  s,
-			ErrorLog: ll,
-		}
+		defer wg.Done()
 
 		ll.Printf("starting HTTP server at %q", cfg.Server.HTTPAddr)
 
-		if err := hs.ListenAndServe(); err != nil {
+		// Canceled via Shutdown.
+		if err := hs.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			ll.Fatalf("failed to listen HTTP: %v", err)
 		}
 	}()
 
-	// Block main goroutine forever.
-	// TODO(mdlayher): consider graceful shutdown to flush sinks.
-	select {}
+	// HTTP server shutdown goroutine.
+	go func() {
+		defer wg.Done()
+
+		// Wait for the parent context to be done before shutting down.
+		<-ctx.Done()
+
+		// Parent context is already closed so start a new background context
+		// for cancelation.
+		hctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		if err := hs.Shutdown(hctx); err != nil {
+			ll.Fatalf("failed to shut down HTTP server: %v", err)
+		}
+	}()
+
+	// Block main goroutine until all servers halt.
+	wg.Wait()
+
+	// If possible, flush sink data before shutdown.
+	if c, ok := sink.(io.Closer); ok {
+		if err := c.Close(); err != nil {
+			ll.Fatalf("failed to flush sink data: %v", err)
+		}
+
+		ll.Println("flushed all sink data")
+	}
 }
