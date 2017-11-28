@@ -9,7 +9,7 @@ import (
 	"github.com/mdlayher/netconsoled"
 )
 
-var panicFilter = netconsoled.FuncFilter(func(d netconsoled.Data) bool {
+var panicFilter = netconsoled.FuncFilter(func(in netconsoled.Data) (netconsoled.Data, bool, error) {
 	panic("reached panic filter")
 })
 
@@ -45,8 +45,8 @@ func TestFilter(t *testing.T) {
 func testMultiFilterDisallow(t *testing.T, d netconsoled.Data) {
 	t.Helper()
 
-	disallowFilter := netconsoled.FuncFilter(func(d netconsoled.Data) bool {
-		return false
+	disallowFilter := netconsoled.FuncFilter(func(in netconsoled.Data) (netconsoled.Data, bool, error) {
+		return netconsoled.Data{}, false, nil
 	})
 
 	filter := netconsoled.MultiFilter(
@@ -56,7 +56,11 @@ func testMultiFilterDisallow(t *testing.T, d netconsoled.Data) {
 		panicFilter,
 	)
 
-	if filter.Allow(d) {
+	_, pass, err := filter.Filter(d)
+	if err != nil {
+		t.Fatalf("failed to filter log: %v", err)
+	}
+	if pass {
 		t.Fatal("expected filter to disallow log, but it was allowed")
 	}
 }
@@ -65,9 +69,9 @@ func testMultiFilterAllow(t *testing.T, d netconsoled.Data) {
 	t.Helper()
 
 	var got []netconsoled.Data
-	fnFilter := netconsoled.FuncFilter(func(d netconsoled.Data) bool {
+	fnFilter := netconsoled.FuncFilter(func(in netconsoled.Data) (netconsoled.Data, bool, error) {
 		got = append(got, d)
-		return true
+		return in, true, nil
 	})
 
 	filter := netconsoled.MultiFilter(
@@ -76,8 +80,16 @@ func testMultiFilterAllow(t *testing.T, d netconsoled.Data) {
 		fnFilter,
 	)
 
-	if !filter.Allow(d) {
+	out, pass, err := filter.Filter(d)
+	if err != nil {
+		t.Fatalf("failed to filter log: %v", err)
+	}
+	if !pass {
 		t.Fatal("expected filter to allow log, but it was disallowed")
+	}
+
+	if diff := cmp.Diff(out, d); diff != "" {
+		t.Fatalf("unexpected filtered data (-want +got):\n%s", diff)
 	}
 
 	want := []netconsoled.Data{d, d}

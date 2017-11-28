@@ -4,17 +4,22 @@ import (
 	"fmt"
 )
 
-// A Filter allows filtering of incoming logs based on the source network address
-// and contents of the logs.
+// A Filter allows filtering and transformation of incoming logs based on the
+// contents of the logs.
 type Filter interface {
-	// Allow determines if Data should or should not be processed.
-	Allow(d Data) bool
+	// Filter determines if Data should proceed to the next step in a pipeline,
+	// and may also apply transformations to the Data.
+	//
+	// If Data should not continue in the pipeline, pass is false.  Any error
+	// will also result in Data not being passed down the pipeline.
+	Filter(in Data) (out Data, pass bool, err error)
 
 	// String returns the name of a Filter.
 	fmt.Stringer
 }
 
-// MultiFilter chains zero or more Filters together.  If any Filter does not allow
+// MultiFilter chains zero or more Filters together.  The output of each Filter
+// is passed to the next Filter in the chain.  If any Filter does not pass
 // a given log, subsequent Filters in the chain are not invoked.
 func MultiFilter(filters ...Filter) Filter {
 	return &multiFilter{
@@ -28,14 +33,26 @@ type multiFilter struct {
 	filters []Filter
 }
 
-func (f *multiFilter) Allow(d Data) bool {
+func (f *multiFilter) Filter(in Data) (Data, bool, error) {
+	var (
+		out  Data
+		pass bool
+		err  error
+	)
+
 	for _, filter := range f.filters {
-		if !filter.Allow(d) {
-			return false
+		out, pass, err = filter.Filter(in)
+		if err != nil {
+			return Data{}, false, err
 		}
+		if !pass {
+			return Data{}, false, nil
+		}
+
+		in = out
 	}
 
-	return true
+	return out, true, nil
 }
 
 func (f *multiFilter) String() string {
@@ -44,22 +61,22 @@ func (f *multiFilter) String() string {
 }
 
 // FuncFilter adapts a function into a Filter.
-func FuncFilter(allow func(d Data) bool) Filter {
+func FuncFilter(filter func(in Data) (Data, bool, error)) Filter {
 	return &funcFilter{
-		fn: allow,
+		fn: filter,
 	}
 }
 
 var _ Filter = &funcFilter{}
 
 type funcFilter struct {
-	fn func(d Data) bool
+	fn func(in Data) (Data, bool, error)
 }
 
-func (f *funcFilter) Allow(d Data) bool { return f.fn(d) }
-func (f *funcFilter) String() string    { return "func" }
+func (f *funcFilter) Filter(in Data) (Data, bool, error) { return f.fn(in) }
+func (f *funcFilter) String() string                     { return "func" }
 
-// NoopFilter returns a Filter that always allows any log.
+// NoopFilter returns a Filter that performs no processing and always passes a log.
 func NoopFilter() Filter {
 	return &noopFilter{}
 }
@@ -68,5 +85,5 @@ var _ Filter = &noopFilter{}
 
 type noopFilter struct{}
 
-func (f *noopFilter) Allow(_ Data) bool { return true }
-func (f *noopFilter) String() string    { return "noop" }
+func (f *noopFilter) Filter(in Data) (Data, bool, error) { return in, true, nil }
+func (f *noopFilter) String() string                     { return "noop" }

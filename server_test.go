@@ -36,8 +36,8 @@ func testServerFilterDisallow(t *testing.T, addr net.Addr, l netconsole.Log) {
 	t.Helper()
 
 	s := &netconsoled.Server{
-		Filter: netconsoled.FuncFilter(func(d netconsoled.Data) bool {
-			return false
+		Filter: netconsoled.FuncFilter(func(d netconsoled.Data) (netconsoled.Data, bool, error) {
+			return netconsoled.Data{}, false, nil
 		}),
 		Sink: panicSink,
 	}

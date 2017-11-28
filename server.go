@@ -29,18 +29,23 @@ type Server struct {
 // Handle handles incoming netconsole log messages.
 func (s *Server) Handle(addr net.Addr, l netconsole.Log) {
 	// Package up information for easier parameter passing.
-	d := Data{
+	in := Data{
 		Addr: addr,
 		Log:  l,
 	}
 
 	// TODO(mdlayher): hooks/metrics in various areas.
 
-	if !s.Filter.Allow(d) {
+	out, pass, err := s.Filter.Filter(in)
+	if err != nil {
+		s.ErrorLog.Printf("error filtering log: %v", err)
+		return
+	}
+	if !pass {
 		return
 	}
 
-	if err := s.Sink.Store(d); err != nil {
+	if err := s.Sink.Store(out); err != nil {
 		s.ErrorLog.Printf("error sending log to sink: %v", err)
 		return
 	}
