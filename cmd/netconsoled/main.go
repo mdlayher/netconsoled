@@ -77,8 +77,10 @@ filters:
   - type: noop
 # Zero or more sinks to use to store processed logs.
 sinks:
-  # By default, print logs to stdout.
+  # By default, print logs to stdout and to a file.
   - type: stdout
+  - type: file
+    file: netconsoled.log
 `
 
 	if err := ioutil.WriteFile(file, []byte(defaultYAML), 0644); err != nil {

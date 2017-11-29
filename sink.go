@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 )
 
 // defaultFormat is the default format descriptor for Sinks.
@@ -98,6 +99,20 @@ type noopSink struct{}
 func (s *noopSink) Store(_ Data) error { return nil }
 func (s *noopSink) String() string     { return "noop" }
 
+// FileSink creates a Sink that creates or opens the specified file and appends
+// logs to the file.
+func FileSink(file string) (Sink, error) {
+	file = filepath.Clean(file)
+
+	// Create or open the file, and always append to it.
+	f, err := os.OpenFile(file, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return nil, err
+	}
+
+	return newNamedSink(fmt.Sprintf("file: %q", file), WriterSink(f)), nil
+}
+
 // WriterSink creates a Sink that writes to w.
 func WriterSink(w io.Writer) Sink {
 	return &writerSink{
@@ -115,7 +130,24 @@ type writerSink struct {
 	format string
 }
 
+// A syncer is a type which can flush its contents from memory to disk, e.g.
+// an *os.File.
+type syncer interface {
+	Sync() error
+}
+
+var _ syncer = &os.File{}
+
 func (s *writerSink) Close() error {
+	// Since a writerSink can be used for files, it's possible that the io.Writer
+	// has a Sync method to flush its contents to disk.  Try it first.
+	if sync, ok := s.w.(syncer); ok {
+		// Attempting to sync stdout, at least on Linux, results in
+		// "invalid argument".  Instead of doing build tags and OS-specific
+		// checks, keep it simple and just Sync as a best effort.
+		_ = sync.Sync()
+	}
+
 	// Close io.Writers which also implement io.Closer.
 	c, ok := s.w.(io.Closer)
 	if !ok {
@@ -149,5 +181,14 @@ type namedSink struct {
 	name string
 }
 
+func (s *namedSink) Close() error {
+	// Close Sinks which also implement io.Closer.
+	c, ok := s.sink.(io.Closer)
+	if !ok {
+		return nil
+	}
+
+	return c.Close()
+}
 func (s *namedSink) Store(d Data) error { return s.sink.Store(d) }
 func (s *namedSink) String() string     { return s.name }

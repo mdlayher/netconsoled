@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"io/ioutil"
 	"net"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -54,6 +57,15 @@ func TestSink(t *testing.T) {
 		{
 			name:   "multi closer ok",
 			verify: testMultiSinkCloserOK,
+		},
+		{
+			name: "file ok",
+			d: netconsoled.Data{
+				Log: netconsole.Log{
+					Message: "hello world",
+				},
+			},
+			verify: testFileSinkOK,
 		},
 	}
 
@@ -180,4 +192,38 @@ type sinkCloser struct {
 func (s *sinkCloser) Close() error {
 	s.closed = true
 	return nil
+}
+
+func testFileSinkOK(t *testing.T, d netconsoled.Data) {
+	// Ensure a test file doesn't already exist, but also clean it
+	// up after the test.
+	file := filepath.Join(os.TempDir(), "netconsoled_filesink.tmp")
+	_ = os.Remove(file)
+	defer os.Remove(file)
+
+	// Open, write data, and close the sink twice.
+	// Verify that the same log was written twice, e.g. the file was not
+	// truncated after the second open.
+	for i := 0; i < 2; i++ {
+		sink, err := netconsoled.FileSink(file)
+		if err != nil {
+			t.Fatalf("failed to create test file sink: %v", err)
+		}
+
+		if err := sink.Store(d); err != nil {
+			t.Fatalf("failed to perform write %d: %v", i, err)
+		}
+
+		// If this panics, we've got a bigger problem anyway.
+		_ = sink.(io.Closer).Close()
+	}
+
+	b, err := ioutil.ReadFile(file)
+	if err != nil {
+		t.Fatalf("failed to read file: %v", err)
+	}
+
+	if c := bytes.Count(b, []byte(d.Log.Message)); c != 2 {
+		t.Fatalf("log was not written %d times to buffer, not 2 times: %s", c, string(b))
+	}
 }

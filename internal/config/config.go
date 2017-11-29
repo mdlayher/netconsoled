@@ -83,15 +83,27 @@ func parseFilters(c RawConfig) ([]netconsoled.Filter, error) {
 func parseSinks(c RawConfig) ([]netconsoled.Sink, error) {
 	var ss []netconsoled.Sink
 	for _, s := range c.Sinks {
-		var sink netconsoled.Sink
+		var (
+			sink netconsoled.Sink
+			err  error
+		)
 
 		switch s.Type {
+		case "file":
+			if s.File == "" {
+				return nil, errors.New("must specify output file for file sink")
+			}
+
+			sink, err = netconsoled.FileSink(s.File)
 		case "noop":
 			sink = netconsoled.NoopSink()
 		case "stdout":
 			sink = netconsoled.StdoutSink()
 		default:
 			return nil, fmt.Errorf("unknown sink type in configuration: %q", s.Type)
+		}
+		if err != nil {
+			return nil, err
 		}
 
 		ss = append(ss, sink)
@@ -114,6 +126,7 @@ type RawConfig struct {
 
 	Sinks []struct {
 		Type string `yaml:"type"`
+		File string `yaml:"file"`
 	} `yaml:"sinks"`
 }
 
