@@ -5,19 +5,10 @@ package main
 import (
 	"context"
 	"flag"
-	"io"
-	"io/ioutil"
 	"log"
-	"net/http"
 	"os"
 	"os/signal"
 	"sync"
-	"time"
-
-	"github.com/mdlayher/netconsole"
-	"github.com/mdlayher/netconsoled"
-	"github.com/mdlayher/netconsoled/internal/config"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func main() {
@@ -32,8 +23,17 @@ func main() {
 	ll := log.New(os.Stderr, "", log.Ldate|log.Ltime)
 
 	if *init {
+		// Generate an initial configuration file.
 		initConfig(ll, defaultConfig)
 		return
+	}
+
+	// Read and validate configuration.
+	ll.Printf("starting netconsoled with configuration file %q", *config)
+
+	cfg, err := parseConfig(ll, *config)
+	if err != nil {
+		ll.Fatalf("failed to initialize: %v", err)
 	}
 
 	// Notify goroutines of halt signal by canceling this context when a
@@ -55,146 +55,9 @@ func main() {
 		cancel()
 	}()
 
-	run(ctx, ll, *config)
+	serve(ctx, ll, cfg)
 
 	wg.Wait()
 
 	ll.Println("stopped netconsoled")
-}
-
-func initConfig(ll *log.Logger, file string) {
-	ll.Printf("creating netconsoled configuration file %q", file)
-
-	const defaultYAML = `---
-# Configuration of the netconsoled server.
-server:
-  # Required: listen for incoming netconsole logs.
-  udp_addr: :6666
-  # Optional: enable HTTP server for Prometheus metrics.
-  http_addr: :8080
-# Zero or more filters to apply to incoming logs.
-filters:
-  # By default, apply no filtering to logs.
-  - type: noop
-# Zero or more sinks to use to store processed logs.
-sinks:
-  # By default, print logs to stdout and to a file.
-  - type: stdout
-  - type: file
-    file: netconsoled.log
-`
-
-	if err := ioutil.WriteFile(file, []byte(defaultYAML), 0644); err != nil {
-		ll.Fatalf("failed to write default configuration file %q: %v", file, err)
-	}
-}
-
-func run(ctx context.Context, ll *log.Logger, file string) {
-	ll.Printf("starting netconsoled with configuration file %q", file)
-
-	b, err := ioutil.ReadFile(file)
-	if err != nil {
-		ll.Fatalf("failed to read configuration file: %v", err)
-	}
-
-	cfg, err := config.Parse(b)
-	if err != nil {
-		ll.Fatalf("failed to process configuration file: %v", err)
-	}
-
-	ll.Printf("loaded %d filter(s):", len(cfg.Filters))
-	for _, f := range cfg.Filters {
-		ll.Printf("  - %s", f.String())
-	}
-
-	ll.Printf("loaded %d sink(s):", len(cfg.Sinks))
-	for _, s := range cfg.Sinks {
-		ll.Printf("  - %s", s.String())
-	}
-
-	// Set up Prometheus metrics.
-	metrics, reg := netconsoled.NewMetrics()
-	prom := promhttp.HandlerFor(reg, promhttp.HandlerOpts{
-		ErrorLog: ll,
-	})
-
-	// Set up Prometheus and future API.
-	mux := http.NewServeMux()
-	mux.Handle("/metrics", prom)
-
-	// Sink is split out so it can shut down gracefully later.
-	sink := netconsoled.MultiSink(cfg.Sinks...)
-
-	s := &netconsoled.Server{
-		Filter:   netconsoled.MultiFilter(cfg.Filters...),
-		Sink:     sink,
-		ErrorLog: ll,
-		Metrics:  metrics,
-	}
-
-	// Start each network service in its own goroutine so they can
-	// be shut down at a later time.
-	var wg sync.WaitGroup
-	wg.Add(3)
-
-	// UDP server goroutine.
-	go func() {
-		defer wg.Done()
-
-		ns := netconsole.NewServer("udp", cfg.Server.UDPAddr, s.Handle)
-
-		ll.Printf("starting UDP server at %q", cfg.Server.UDPAddr)
-
-		// Canceled context will stop listener.
-		if err := ns.ListenAndServe(ctx); err != nil {
-			ll.Fatalf("failed to listen UDP: %v", err)
-		}
-	}()
-
-	hs := &http.Server{
-		Addr:     cfg.Server.HTTPAddr,
-		Handler:  mux,
-		ErrorLog: ll,
-	}
-
-	// HTTP server listener goroutine.
-	go func() {
-		defer wg.Done()
-
-		ll.Printf("starting HTTP server at %q", cfg.Server.HTTPAddr)
-
-		// Canceled via Shutdown.
-		if err := hs.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			ll.Fatalf("failed to listen HTTP: %v", err)
-		}
-	}()
-
-	// HTTP server shutdown goroutine.
-	go func() {
-		defer wg.Done()
-
-		// Wait for the parent context to be done before shutting down.
-		<-ctx.Done()
-
-		// Parent context is already closed so start a new background context
-		// for cancelation.
-		hctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-
-		if err := hs.Shutdown(hctx); err != nil {
-			ll.Fatalf("failed to shut down HTTP server: %v", err)
-		}
-	}()
-
-	// Block main goroutine until all servers halt.
-	wg.Wait()
-
-	// If possible, flush sink data before shutdown.
-	if c, ok := sink.(io.Closer); ok {
-		if err := c.Close(); err != nil {
-			ll.Fatalf("failed to flush sink data: %v", err)
-		}
-
-		ll.Println("flushed all sink data")
-	}
 }
