@@ -17,6 +17,7 @@ import (
 	"github.com/mdlayher/netconsole"
 	"github.com/mdlayher/netconsoled"
 	"github.com/mdlayher/netconsoled/internal/config"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func main() {
@@ -69,7 +70,7 @@ func initConfig(ll *log.Logger, file string) {
 server:
   # Required: listen for incoming netconsole logs.
   udp_addr: :6666
-  # Optional: enable HTTP server for additional functionality.
+  # Optional: enable HTTP server for Prometheus metrics.
   http_addr: :8080
 # Zero or more filters to apply to incoming logs.
 filters:
@@ -111,6 +112,16 @@ func run(ctx context.Context, ll *log.Logger, file string) {
 		ll.Printf("  - %s", s.String())
 	}
 
+	// Set up Prometheus metrics.
+	metrics, reg := netconsoled.NewMetrics()
+	prom := promhttp.HandlerFor(reg, promhttp.HandlerOpts{
+		ErrorLog: ll,
+	})
+
+	// Set up Prometheus and future API.
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", prom)
+
 	// Sink is split out so it can shut down gracefully later.
 	sink := netconsoled.MultiSink(cfg.Sinks...)
 
@@ -118,6 +129,7 @@ func run(ctx context.Context, ll *log.Logger, file string) {
 		Filter:   netconsoled.MultiFilter(cfg.Filters...),
 		Sink:     sink,
 		ErrorLog: ll,
+		Metrics:  metrics,
 	}
 
 	// Start each network service in its own goroutine so they can
@@ -141,7 +153,7 @@ func run(ctx context.Context, ll *log.Logger, file string) {
 
 	hs := &http.Server{
 		Addr:     cfg.Server.HTTPAddr,
-		Handler:  s,
+		Handler:  mux,
 		ErrorLog: ll,
 	}
 
